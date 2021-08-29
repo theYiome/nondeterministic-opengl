@@ -2,5 +2,5 @@
 out vec3 pixel;
 
 void main() {
-	pixel = vec3(0.2 + gl_FragCoord.z, 0.4, 0.7);
+	pixel = vec3(gl_FragCoord.x / 500, gl_FragCoord.y / 500, 0.7);
 }

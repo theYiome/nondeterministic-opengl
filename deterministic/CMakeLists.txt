@@ -13,7 +13,8 @@ add_executable(CMakeProject1 "")
 target_sources(CMakeProject1
     PRIVATE
         main.cpp
-        main.h
+        main.hpp
+        utils_gl.hpp
 )
 
 target_link_libraries(CMakeProject1 PRIVATE glad::glad)
