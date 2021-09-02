@@ -4,6 +4,7 @@
 cmake_minimum_required (VERSION 3.8)
 
 find_package(glad CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 
@@ -15,9 +16,14 @@ target_sources(CMakeProject1
         main.cpp
         main.hpp
         utils_gl.hpp
-)
+        stb.cpp
+ )
+
+find_path(STB_INCLUDE_DIRS "stb.h")
+target_include_directories(CMakeProject1 PRIVATE ${STB_INCLUDE_DIRS})
 
 target_link_libraries(CMakeProject1 PRIVATE glad::glad)
+target_link_libraries(CMakeProject1 PRIVATE glm::glm)
 target_link_libraries(CMakeProject1 PRIVATE glfw)
 target_link_libraries(CMakeProject1 PRIVATE imgui::imgui)
 
