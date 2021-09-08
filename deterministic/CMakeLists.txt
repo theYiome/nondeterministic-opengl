@@ -17,7 +17,8 @@ target_sources(CMakeProject1
         main.hpp
         utils_gl.hpp
         stb.cpp
- )
+        InteractiveWindow.hpp
+)
 
 find_path(STB_INCLUDE_DIRS "stb.h")
 target_include_directories(CMakeProject1 PRIVATE ${STB_INCLUDE_DIRS})
@@ -27,6 +28,13 @@ target_link_libraries(CMakeProject1 PRIVATE glm::glm)
 target_link_libraries(CMakeProject1 PRIVATE glfw)
 target_link_libraries(CMakeProject1 PRIVATE imgui::imgui)
 
+if (MSVC)
+    # warning level 4 and all warnings as errors
+    add_compile_options(/W4 /WX)
+else()
+    # lots of warnings and all warnings as errors
+    add_compile_options(-Wall -Wextra -pedantic -Werror)
+endif()
 
 if(UNIX)
     add_custom_command(
