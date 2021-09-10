@@ -18,7 +18,7 @@ target_sources(CMakeProject1
         utils_gl.hpp
         stb.cpp
         InteractiveWindow.hpp
-)
+ "Texture.hpp")
 
 find_path(STB_INCLUDE_DIRS "stb.h")
 target_include_directories(CMakeProject1 PRIVATE ${STB_INCLUDE_DIRS})

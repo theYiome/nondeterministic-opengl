@@ -2,7 +2,7 @@
 in vec3 vertex_color;
 in vec2 tex_coord;
 
-uniform float factor = 0.5f;
+uniform float factor = 1.0;
 uniform sampler2D wall_texture;
 
 out vec3 pixel;

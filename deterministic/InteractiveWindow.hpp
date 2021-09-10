@@ -10,6 +10,189 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+#include "main.hpp"
+#include "Texture.hpp"
+
+
+class FirstPersonCamera {
+
+public:
+    float sensitivity = 0.003f;
+    float speed = 10.f;
+
+    glm::vec3 position = glm::vec3(0.0f, 0.0f, 3.0f);
+    glm::vec3 look_at = glm::vec3(0.0f, 0.0f, -1.0f);
+    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+
+    float FOV = glm::pi<float>() * 0.5f;
+
+    float pitch = 0;
+    float yaw = glm::pi<float>() * (-0.5f);
+
+    float max_pitch = glm::pi<float>() * 0.45f;
+    float max_yaw = glm::pi<float>() * 2.f;
+
+    void update_look_at() {
+        glm::vec3 direction;
+        direction.x = cos(yaw) * cos(pitch);
+        direction.y = sin(pitch);
+        direction.z = sin(yaw) * cos(pitch);
+        look_at = glm::normalize(direction);
+    }
+
+    void update_pitch(const float& pitch_difference = 0.f) {
+        pitch += pitch_difference * sensitivity;
+        if (pitch > max_pitch)
+            pitch = max_pitch;
+        else if (pitch < -max_pitch)
+            pitch = -max_pitch;
+    }
+
+    void update_yaw(const float& yaw_difference = 0.f) {
+        yaw += yaw_difference * sensitivity;
+        if (yaw > max_yaw)
+            yaw -= max_yaw;
+        else if (yaw < -max_yaw)
+            yaw += max_yaw;
+    }
+
+    void imgui_panel() {
+        if (ImGui::TreeNode("Camera")) {
+            ImGui::SliderFloat("Sensitivity", &sensitivity, 0.001f, 0.01f);
+            ImGui::SliderFloat("Speed", &speed, 0.f, 100.f);
+            ImGui::SliderFloat("FOV", &FOV, 0, glm::pi<float>());
+            ImGui::SliderFloat("Pitch", &pitch, -max_pitch, max_pitch);
+            ImGui::DragFloat("Yaw", &yaw, 0.01f);
+            ImGui::DragFloat3("Postition", glm::value_ptr(position), 0.05f);
+            ImGui::DragFloat3("Look at", glm::value_ptr(look_at), 0.05f);
+            ImGui::DragFloat3("Up unit vector", glm::value_ptr(up), 0.05f);
+        }
+        ImGui::TreePop();
+    }
+};
+ 
+
+class SimpleWindow {
+    static constexpr int std_width = 900;
+    static constexpr int std_height = 900;
+public:
+    GLFWwindow* const window_ptr;
+    int width = 900;
+    int height = 900;
+
+    std::map<std::string, GLFWmonitor*> labeled_monitors;
+    std::string selected_monitor;
+
+    static void init_glfw() {
+        glfwInit();
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    }
+
+    SimpleWindow(const std::string& name, const int& window_width = std_width, const int& window_height = std_height) :
+        window_ptr(glfwCreateWindow(width, height, name.c_str(), NULL, NULL)) {
+
+        glfwMakeContextCurrent(window_ptr);
+        //glfwSetFramebufferSizeCallback(window_ptr, on_viewport_change);
+        //glfwSetCursorPosCallback(window_ptr, on_mouse_move);
+        //glfwSetKeyCallback(window_ptr, on_key_press);
+        //glfwSetMonitorCallback(on_monitor_change);
+        //on_monitor_change();
+
+        glViewport(0, 0, width, height);
+        glEnable(GL_DEPTH_TEST);
+
+        update_monitors();
+    }
+
+    static std::string create_monitor_label(GLFWmonitor* const monitor, const int& index = 0) {
+        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        std::ostringstream string_stream;
+        string_stream << "Fullscreen on monitor " << index + 1 << ": ";
+        string_stream << mode->width << "x" << mode->height << " " << mode->refreshRate << "Hz";
+        return string_stream.str();
+    }
+
+    void update_monitors() {
+        labeled_monitors.clear();
+        labeled_monitors.insert({ std::string("Windowed"), nullptr });
+        // pool GLFW for connected monitors and add them to labeled_monitors
+        {
+            int count;
+            GLFWmonitor** monitors = glfwGetMonitors(&count);
+            for (int index = 0; index < count; ++index) {
+                std::string label = create_monitor_label(monitors[index], index);
+                labeled_monitors.insert({ label, monitors[index] });
+            }
+        }
+    }
+
+    void set_fullscreen(const std::string& label) {
+        const int big_width = 15360;
+        const int big_height = 8640;
+
+        GLFWmonitor* monitor = labeled_monitors[label];
+        if (monitor)
+            glfwSetWindowMonitor(window_ptr, monitor, 0, 0, big_width, big_height, GLFW_DONT_CARE);
+        else
+            glfwSetWindowMonitor(window_ptr, nullptr, 100, 100, std_width, std_height, GLFW_DONT_CARE);
+
+        selected_monitor = label;
+    }
+
+    void imgui_panel() {
+        if (ImGui::BeginCombo("Display mode", selected_monitor.c_str())) {
+
+
+            for (const auto& pair : labeled_monitors) {
+                bool selected = pair.first == selected_monitor;
+                if (ImGui::Selectable(pair.first.c_str(), selected)) {
+                    std::cout << pair.first << std::endl;
+                }
+            }
+
+            //for (int i = 0; i < labels.size(); ++i) {
+            //    const char* choosen_label = labels[i].c_str();
+            //    bool is_selected = (window::current_monitor_label == choosen_label);
+            //    if (ImGui::Selectable(choosen_label, is_selected)) {
+            //        window::current_monitor_label = choosen_label;
+            //        if (i == 0) window::set_fullscreen(window::glew_window, NULL);
+            //        else window::set_fullscreen(window::glew_window, window::monitors[i - 1]);
+            //    }
+            //    // You may set the initial focus when opening the combo (scrolling + for keyboard navigation support)
+            //    //if (is_selected) ImGui::SetItemDefaultFocus();
+            //}
+        }
+        ImGui::EndCombo();
+    }
+};
+
+
+class CameraWindow {
+    static constexpr int std_width = 900;
+    static constexpr int std_height = 900;
+public:
+    SimpleWindow window;
+    FirstPersonCamera camera;
+
+    CameraWindow(const std::string& name, const int& window_width = std_width, const int& window_height = std_height) :
+        window(name, window_width, window_height) {
+    }
+
+    void update_camera_postition(const float& dt) {
+        const float dx = camera.speed * dt;
+        if (glfwGetKey(window.window_ptr, GLFW_KEY_W) == GLFW_PRESS)
+            camera.position += dx * camera.look_at;
+        if (glfwGetKey(window.window_ptr, GLFW_KEY_S) == GLFW_PRESS)
+            camera.position -= dx * camera.look_at;
+        if (glfwGetKey(window.window_ptr, GLFW_KEY_A) == GLFW_PRESS)
+            camera.position -= glm::normalize(glm::cross(camera.look_at, camera.up)) * dx;
+        if (glfwGetKey(window.window_ptr, GLFW_KEY_D) == GLFW_PRESS)
+            camera.position += glm::normalize(glm::cross(camera.look_at, camera.up)) * dx;
+    }
+};
+
 namespace window {
 
     GLFWwindow* glew_window;
@@ -21,13 +204,7 @@ namespace window {
     GLFWmonitor* current_monitor;
     static const char* current_monitor_label = nullptr;
 
-    float color_array[]{ 0.7f, 0.1f, 0.2f };
-    static std::map<int, GLenum> polygon_modes_map{ {0, GL_FILL}, {1, GL_LINE}, {2, GL_POINT} };
-    static int current_polygon_mode = 0;
-
-    GLuint uniform_factor;
-    GLuint uniform_rotation;
-    GLuint uniform_transformation;
+    std::shared_ptr<AppData> app_data;
 
     namespace camera {
         float sensitivity = 0.003f;
@@ -187,7 +364,7 @@ namespace window {
 }
 
 
-void app_config_window() {
+void app_data_window() {
     ImGui::Begin("App Config");
 
     ImGui::Spacing();
@@ -196,17 +373,17 @@ void app_config_window() {
     ImGui::Text("[W][A][S][D] - move around the scene");
     ImGui::Spacing();
 
-    ImGui::ColorEdit3("Background color", window::color_array);
+    ImGui::ColorEdit3("Background color", glm::value_ptr(window::app_data->bg_color));
 
     {
         const char* const labels[] = { "GL_FILL", "GL_LINE", "GL_POINT" };
-        ImGui::Combo("Drawing mode", &window::current_polygon_mode, labels, IM_ARRAYSIZE(labels));
+        ImGui::Combo("Drawing mode", &window::app_data->current_polygon_mode, labels, IM_ARRAYSIZE(labels));
     }
 
     {
-        static float factor = 0.5f;
-        if (ImGui::SliderFloat("Factor", &factor, -2.f, 2.f)) {
-            glUniform1f(window::uniform_factor, factor);
+        float& color_ratio = window::app_data->color_ratio;
+        if (ImGui::SliderFloat("Color (texture -> vertex)", &color_ratio, 0.f, 1.f)) {
+            glUniform1f(window::app_data->uniforms.factor, color_ratio);
         }
     }
 
@@ -218,9 +395,11 @@ void app_config_window() {
         if (ImGui::BeginCombo("Display mode", window::current_monitor_label))
         {
             for (int i = 0; i < labels.size(); ++i) {
-                bool is_selected = (window::current_monitor_label == labels[i].c_str());
-                if (ImGui::Selectable(labels[i].c_str(), is_selected)) {
-                    window::current_monitor_label = labels[i].c_str();
+                const char* choosen_label = labels[i].c_str();
+
+                bool is_selected = (window::current_monitor_label == choosen_label);
+                if (ImGui::Selectable(choosen_label, is_selected)) {
+                    window::current_monitor_label = choosen_label;
 
                     if (i == 0) window::set_fullscreen(window::glew_window, NULL);
                     else window::set_fullscreen(window::glew_window, window::monitors[i - 1]);
@@ -233,62 +412,22 @@ void app_config_window() {
     }
 
     ImGui::SetNextItemOpen(true, ImGuiCond_FirstUseEver);
-    if (ImGui::TreeNode("Camera")) {
-        {
-            ImGui::SliderFloat("Sensitivity", &window::camera::sensitivity, 0.001f, 0.01f);
-            ImGui::SliderFloat("Speed", &window::camera::speed, 0.f, 100.f);
-            ImGui::SliderFloat("FOV", &window::camera::FOV, 0, glm::pi<float>());
-            ImGui::SliderFloat("Pitch", &window::camera::pitch, -window::camera::max_pitch, window::camera::max_pitch);
-            ImGui::DragFloat("Yaw", &window::camera::yaw, 0.01f);
-            ImGui::DragFloat3("Postition", glm::value_ptr(window::camera::position), 0.05f);
-            ImGui::DragFloat3("Look at", glm::value_ptr(window::camera::look_at), 0.05f);
-            ImGui::DragFloat3("Up unit vector", glm::value_ptr(window::camera::up), 0.05f);
-        }
-
-        ImGui::TreePop();
-    }
-
-    if (ImGui::TreeNode("Special cube")) {
-        {
-            static float rotation = -0.7f;
-            static float scale[3] = { 1.0f, 1.0f, 1.0f };
-            static float translate[3] = { 0.f, 0.f, -3.f };
-
-            const float range = 3.14f * 2.f;
-
-            ImGui::SliderFloat("Rotation", &rotation, -range, range);
-            ImGui::DragFloat3("Scale", scale, 0.05f);
-            ImGui::DragFloat3("Translate", translate, 0.05f);
-
-            glm::mat4 transformation = glm::mat4(1.0f);
-            glm::mat4 model = glm::rotate(glm::mat4(1.f), rotation, glm::vec3(0.9f, 0.1f, 0.1f));
-            model *= glm::scale(transformation, glm::vec3(scale[0], scale[1], scale[2]));
-            glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(translate[0], translate[1], translate[2]));
-            glm::mat4 projection = glm::perspective<float>(window::camera::FOV, float(window::width) / window::height, 0.1f, 100.0f);
-
-            transformation = transformation * projection * view * model;
-            glUniformMatrix4fv(window::uniform_transformation, 1, GL_FALSE, glm::value_ptr(transformation));
-        }
-
-        ImGui::TreePop();
-    }
-
     {
         const char* const labels[] = { "GL_FILL", "GL_LINE", "GL_POINT" };
-        ImGui::Combo("Polygon mode", &window::current_polygon_mode, labels, IM_ARRAYSIZE(labels));
+        ImGui::Combo("Polygon mode", &window::app_data->current_polygon_mode, labels, IM_ARRAYSIZE(labels));
     }
 
-    //if (ImGui::TreeNode("Data")) {
-    //    {
-    //        ImTextureID wall_texture = (void*)(intptr_t)wall_texture_id;
-    //        float my_tex_w = static_cast<float>(wall_texture_width);
-    //        float my_tex_h = static_cast<float>(wall_texture_height);
-    //        ImGui::Text("%.0fx%.0f", my_tex_w, my_tex_h);
-    //        ImGui::Image(wall_texture, ImVec2(my_tex_w, my_tex_h));
-    //    }
-
-    //    ImGui::TreePop();
-    //}
+    if (ImGui::TreeNode("Data")) {
+        {
+            const Texture& wall_tex = window::app_data->textures.wall;
+            ImTextureID wall_texture = (void*)(intptr_t)wall_tex.id;
+            ImGui::Text("%d x %d", wall_tex.width, wall_tex.height);
+            ImGui::Image(wall_texture, ImVec2(wall_tex.width, wall_tex.height));
+        }
+        ImGui::TreePop();
+    }
 
     ImGui::End();
 }
+
+
