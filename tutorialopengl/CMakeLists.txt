@@ -1,7 +1,7 @@
 ﻿# CMakeList.txt : CMake project for CMakeProject1, include source and define
 # project specific logic here.
 #
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.20)
 
 find_package(glad CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
@@ -9,24 +9,30 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 
 # Add source to this project's executable.
-add_executable(CMakeProject1 "")
+add_executable(tutorialopengl "")
 
-target_sources(CMakeProject1
+target_sources(tutorialopengl
     PRIVATE
-        main.cpp
-        main.hpp
-        utils_gl.hpp
-        stb.cpp
-        InteractiveWindow.hpp
- "Texture.hpp")
+        "main.cpp"
+        "main.hpp"
+        "utils_gl.hpp"
+        "stb.cpp"
+        "Texture.hpp"
+)
 
 find_path(STB_INCLUDE_DIRS "stb.h")
-target_include_directories(CMakeProject1 PRIVATE ${STB_INCLUDE_DIRS})
+target_include_directories(tutorialopengl PRIVATE ${STB_INCLUDE_DIRS})
 
-target_link_libraries(CMakeProject1 PRIVATE glad::glad)
-target_link_libraries(CMakeProject1 PRIVATE glm::glm)
-target_link_libraries(CMakeProject1 PRIVATE glfw)
-target_link_libraries(CMakeProject1 PRIVATE imgui::imgui)
+target_link_libraries(tutorialopengl PRIVATE glad::glad)
+target_link_libraries(tutorialopengl PRIVATE glm::glm)
+target_link_libraries(tutorialopengl PRIVATE glfw)
+target_link_libraries(tutorialopengl PRIVATE imgui::imgui)
+
+# own libs
+
+#target_include_directories(tutorialopengl windowinglib)
+target_link_libraries(tutorialopengl PRIVATE windowing)
+install(TARGETS tutorialopengl DESTINATION bin)
 
 if (MSVC)
     # warning level 4 and all warnings as errors
@@ -38,7 +44,7 @@ endif()
 
 if(UNIX)
     add_custom_command(
-        TARGET CMakeProject1 POST_BUILD
+        TARGET tutorialopengl POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E create_symlink              
         ${CMAKE_CURRENT_SOURCE_DIR}/resources
         ${CMAKE_CURRENT_BINARY_DIR}/resources
@@ -54,6 +60,6 @@ else()
 	    ${CMAKE_CURRENT_BINARY_DIR}/resources
     )
 
-    add_dependencies(CMakeProject1 copy_resources)
+    add_dependencies(tutorialopengl copy_resources)
 
 endif(UNIX)

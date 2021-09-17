@@ -7,7 +7,8 @@ if(CMAKE_MINOR_VERSION GREATER 20 OR CMAKE_MAJOR_VERSION GREATER 3)
     cmake_policy(SET CMP0126 NEW)
 endif()
 
-project("CMakeProject1")
+project("LearnOpenGL")
 
 # Include sub-projects.
-add_subdirectory("deterministic")
+add_subdirectory("windowing")
+add_subdirectory("tutorialopengl")
