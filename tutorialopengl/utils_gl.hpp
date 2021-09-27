@@ -2,7 +2,7 @@
 #include <fstream>
 #include <iostream>
 
-std::string read_file(const char* filename) {
+std::string read_file(const std::string& filename) {
     std::string line, text;
     std::ifstream file;
     file.open(filename);
@@ -19,9 +19,17 @@ std::string read_file(const char* filename) {
     return text;
 }
 
-GLuint create_shader_program() {
+std::string dump_file_to_string(const std::string& file_path) {
+    return read_file(file_path);
+}
+
+std::string dump_file_to_string(const char* file_path) {
+    return read_file(std::string(file_path));
+}
+
+GLuint create_shader_program(const std::string &vertex_shader_path, const std::string &fragment_shader_path) {
     // vertex shader
-    std::string vertex_shader_str = read_file("resources/vertex.glsl");
+    std::string vertex_shader_str = dump_file_to_string(vertex_shader_path);
 
     const char* vertex_shader_c_str = vertex_shader_str.c_str();
     //printf("%s\n", vertex_shader_c_str);
@@ -31,7 +39,7 @@ GLuint create_shader_program() {
     glCompileShader(vertex_shader);
 
     // fragment shader
-    std::string fragment_shader_str = read_file("resources/fragment.glsl");
+    std::string fragment_shader_str = dump_file_to_string(fragment_shader_path);
 
     const char* fragment_shader_c_str = fragment_shader_str.c_str();
     //printf("%s\n", fragment_shader_c_str);
@@ -77,12 +85,15 @@ GLuint create_shader_program() {
 #include <chrono>
 
 void printFPS() {
-    // static std::chrono::time_point<std::chrono::steady_clock> oldTime = std::chrono::high_resolution_clock::now();
-    // static int fps; fps++;
+    // c++11 and greater
+    #if __cplusplus >= 201103L
+        static std::chrono::time_point<std::chrono::steady_clock> oldTime = std::chrono::high_resolution_clock::now();
+        static int fps; fps++;
 
-    // if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::high_resolution_clock::now() - oldTime) >= std::chrono::seconds{ 1 }) {
-    //     oldTime = std::chrono::high_resolution_clock::now();
-    //     std::cout << "FPS: " << fps << std::endl;
-    //     fps = 0;
-    // }
+        if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::high_resolution_clock::now() - oldTime) >= std::chrono::seconds{ 1 }) {
+            oldTime = std::chrono::high_resolution_clock::now();
+            std::cout << "FPS: " << fps << std::endl;
+            fps = 0;
+        }
+    #endif
 }

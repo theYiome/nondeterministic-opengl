@@ -2,12 +2,14 @@
 layout (location = 0) in vec3 position;
 layout (location = 1) in vec3 color;
 layout (location = 2) in vec2 tex_coordinates;
-layout (location = 3) in vec3 normal_vec;
+layout (location = 3) in vec3 normal_vector;
 
 out vec3 vertex_color;
 out vec2 tex_coord;
 out vec3 fragment_position;
-out vec3 normal;
+
+out vec3 raw_normal;
+out vec3 adjusted_normal;
 
 // model matrix is a transformation matrix that:
 // translates, scales and/or rotates
@@ -23,5 +25,7 @@ void main() {
 	vertex_color = color;
 	tex_coord = tex_coordinates;
 	fragment_position = (model * pos).xyz;
-	normal = mat3(transpose(inverse(model))) * normal_vec;
+
+	adjusted_normal = mat3(transpose(inverse(model))) * normal_vector;
+	raw_normal = normal_vector;
 }

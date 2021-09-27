@@ -4,6 +4,8 @@
 #include <cassert>
 
 #include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
 
 #include "SimpleWindow.hpp"
 
@@ -73,6 +75,33 @@ void SimpleWindow::set_fullscreen(const std::string& label) {
 
     selected_monitor = label;
 }
+
+void SimpleWindow::init_imgui() {
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(window_ptr, true);
+    ImGui_ImplOpenGL3_Init();
+}
+
+void SimpleWindow::terminate_imgui() {
+    ImGui::DestroyContext();
+}
+
+void SimpleWindow::start_frame() {
+    glfwPollEvents();
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+}
+
+void SimpleWindow::end_frame() {
+    ImGui::EndFrame();
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    glfwSwapBuffers(window_ptr);
+}
+
 
 void SimpleWindow::imgui_panel() {
     if (ImGui::BeginCombo("Display mode", selected_monitor.c_str())) {

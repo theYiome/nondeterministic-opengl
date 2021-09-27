@@ -23,7 +23,7 @@ public:
 
     SimpleWindow(const std::string& name, const int& window_width = std_width, const int& window_height = std_height);
 
-    virtual ~SimpleWindow();
+    ~SimpleWindow();
 
     static std::string create_monitor_label(GLFWmonitor* const monitor, const int& index = 0);
 
@@ -31,5 +31,13 @@ public:
 
     void set_fullscreen(const std::string& label);
 
-    virtual void imgui_panel();
+    void init_imgui();
+
+    void terminate_imgui();
+
+    void start_frame();
+
+    void end_frame();
+
+    void imgui_panel();
 };

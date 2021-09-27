@@ -9,6 +9,11 @@ endif()
 
 project("LearnOpenGL")
 
+set (CMAKE_CXX_STANDARD 11)
+if(MSVC)
+    string(APPEND CMAKE_CXX_FLAGS " /Zc:__cplusplus")
+endif()
+
 # Include sub-projects.
 add_subdirectory("windowing")
 add_subdirectory("tutorialopengl")

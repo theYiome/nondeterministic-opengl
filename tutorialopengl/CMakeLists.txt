@@ -14,10 +14,14 @@ add_executable(tutorialopengl "")
 target_sources(tutorialopengl
     PRIVATE
         "main.cpp"
-        "main.hpp"
+        "Models.hpp"
         "utils_gl.hpp"
         "stb.cpp"
         "Texture.hpp"
+        "utils.hpp"
+        "examples.hpp"
+        "examples.cpp"
+        "imgui_utils.hpp"
 )
 
 find_path(STB_INCLUDE_DIRS "stb.h")
