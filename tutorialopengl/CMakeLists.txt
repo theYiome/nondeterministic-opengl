@@ -3,6 +3,8 @@
 #
 cmake_minimum_required (VERSION 3.20)
 
+
+find_package(OpenMP REQUIRED)
 find_package(glad CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
@@ -27,6 +29,7 @@ target_sources(tutorialopengl
 find_path(STB_INCLUDE_DIRS "stb.h")
 target_include_directories(tutorialopengl PRIVATE ${STB_INCLUDE_DIRS})
 
+target_link_libraries(tutorialopengl PUBLIC OpenMP::OpenMP_CXX)
 target_link_libraries(tutorialopengl PRIVATE glad::glad)
 target_link_libraries(tutorialopengl PRIVATE glm::glm)
 target_link_libraries(tutorialopengl PRIVATE glfw)

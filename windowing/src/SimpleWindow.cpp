@@ -3,6 +3,8 @@
 #include <sstream>
 #include <cassert>
 
+#include <glad/glad.h>
+
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
@@ -30,14 +32,42 @@ void SimpleWindow::toggle_cursor_mode() {
     }
 }
 
-SimpleWindow::SimpleWindow(const std::string& name, const int& window_width, const int& window_height) :
-    window_ptr(glfwCreateWindow(window_width, window_height, name.c_str(), NULL, NULL)) {
+void SimpleWindow::init_imgui() {
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplGlfw_InitForOpenGL(window_ptr, true);
+    ImGui_ImplOpenGL3_Init();
+}
+
+SimpleWindow::SimpleWindow(const std::string& name, const int& window_width, const int& window_height):
+    width(window_width), height(window_height) {
+    
+    SimpleWindow::init_glfw();
+    window_ptr = glfwCreateWindow(window_width, window_height, name.c_str(), NULL, NULL);
     assert(window_ptr != nullptr);
+    
     update_monitors();
+
     glfwMakeContextCurrent(window_ptr);
+
+    bool glad_loaded = gladLoadGL();
+    assert(glad_loaded);
+    assert(GLVersion.major == 4);
+    assert(GLVersion.minor >= 6);
+    
+    init_imgui();
+}
+
+bool SimpleWindow::should_close() {
+    return glfwWindowShouldClose(window_ptr);
 }
 
 SimpleWindow::~SimpleWindow() {
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
     glfwTerminate();
 }
 
@@ -74,18 +104,6 @@ void SimpleWindow::set_fullscreen(const std::string& label) {
         glfwSetWindowMonitor(window_ptr, nullptr, 100, 100, std_width, std_height, GLFW_DONT_CARE);
 
     selected_monitor = label;
-}
-
-void SimpleWindow::init_imgui() {
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    ImGui::StyleColorsDark();
-    ImGui_ImplGlfw_InitForOpenGL(window_ptr, true);
-    ImGui_ImplOpenGL3_Init();
-}
-
-void SimpleWindow::terminate_imgui() {
-    ImGui::DestroyContext();
 }
 
 void SimpleWindow::start_frame() {

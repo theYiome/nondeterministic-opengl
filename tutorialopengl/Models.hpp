@@ -45,7 +45,7 @@ namespace models {
             return vertices.size() * sizeof(GLfloat);
         }
 
-        std::vector <GLuint> vertex_attributes = { 3, 3, 2, 3};
+        std::vector <GLuint> vertex_attributes = { 3, 3, 2, 3 };
 
         GLuint vertex_size() {
             return std::accumulate(vertex_attributes.begin(), vertex_attributes.end(), 0);
@@ -108,9 +108,9 @@ namespace models {
         }
 
         void unbind() {
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
             glBindVertexArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
         }
 
         void draw() {

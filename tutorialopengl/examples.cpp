@@ -1,4 +1,5 @@
 #include <cassert>
+#include <tuple>
 
 #include <GLAD/glad.h>
 
@@ -32,6 +33,7 @@ namespace examples {
         void Data::imgui_panel() {
             ImGui::ColorEdit3("Background color", glm::value_ptr(bg_color));
 
+            // TODO use new combo API, update mode only on change
             {
                 const char* const labels[] = { "GL_FILL", "GL_LINE", "GL_POINT" };
                 ImGui::Combo("Drawing mode", &current_polygon_mode, labels, IM_ARRAYSIZE(labels));
@@ -82,16 +84,10 @@ namespace examples {
             Data app_data;
 
             /* Initialize the library */
-            SimpleWindow::init_glfw();
+            //SimpleWindow::init_glfw();
 
             /* Create a windowed mode window and its OpenGL context */
             CameraWindow camera_window("Cubes and a light source");
-
-            bool glad_loaded = gladLoadGL();
-            assert(glad_loaded);
-            assert(GLVersion.major == 4);
-            assert(GLVersion.minor >= 6);
-            camera_window.window.init_imgui();
 
             app_data.textures.wall = Texture::load_from_path("resources/wall.jpg");
             app_data.textures.crate = CubeTexture::load_from_path("resources/crate.png");
@@ -125,7 +121,7 @@ namespace examples {
             float dt = 0.0f;
 
             /* Loop until the user closes the window */
-            while (!glfwWindowShouldClose(camera_window.window.window_ptr))
+            while (!camera_window.window.should_close())
             {
                 dt = calculate_dt();
 
@@ -207,15 +203,175 @@ namespace examples {
             }
 
             glDeleteProgram(shader_program);
-
-            camera_window.window.terminate_imgui();
 	    }
     }
 
     namespace rt_spheres {
 
+        static std::tuple<GLuint, GLuint, GLuint> create_rectangle(const GLfloat& size = 0.2f) {
+            GLuint VAO, VBO, EBO;
+            glGenVertexArrays(1, &VAO);
+            glGenBuffers(1, &VBO);
+            glGenBuffers(1, &EBO);
+
+            glBindVertexArray(VAO);
+            glBindBuffer(GL_ARRAY_BUFFER, VBO);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GL_FLOAT), 0);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GL_FLOAT), (void*)(2 * sizeof(GL_FLOAT)));
+            glEnableVertexAttribArray(1);
+
+            GLfloat vertices[] = {
+                -size,  -size,     0.f, 0.f,
+                -size,   size,     0.f, 1.f,
+                 size,   size,     1.f, 1.f,
+                 size,  -size,     1.f, 0.f,
+            };
+
+            glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+            GLuint indicies[] = {
+                0, 1, 2,
+                0, 3, 2
+            };
+
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indicies), indicies, GL_STATIC_DRAW);
+
+            // https://gamedev.stackexchange.com/questions/90471/should-unbind-buffer
+            // Remember to unbind the VAO first.
+            glBindVertexArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+            return { VAO, VBO, EBO };
+        }
+
+        struct Pixel {
+            GLfloat r;
+            GLfloat g;
+            GLfloat b;
+        };
+
+        struct FrameBuffer {
+            GLuint texture_id;
+
+            GLuint width;
+            GLuint height;
+            std::vector<Pixel> data;
+
+            Pixel& at(const GLuint& x, const GLuint& y) {
+                assert(x < width);
+                assert(y < height);
+                return data[x * width + y];
+            }
+
+            GLfloat* raw_data() {
+                return reinterpret_cast<GLfloat*>(data.data());
+            }
+
+            void update() {
+                glBindTexture(GL_TEXTURE_2D, texture_id);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_FLOAT, raw_data());
+                glGenerateTextureMipmap(texture_id);
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            void allocate(GLuint new_width, GLuint new_height) {
+                width = new_width;
+                height = new_height;
+                data.resize(width * height);
+            }
+
+            FrameBuffer() : width(0), height(0) {
+                glGenTextures(1, &texture_id);
+                glBindTexture(GL_TEXTURE_2D, texture_id);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            void bind() {
+                glBindTexture(GL_TEXTURE_2D, texture_id);
+            }
+
+            void unbind() {
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+        };
+
+        void render(FrameBuffer& buffer, GLuint w, GLuint h) {
+            if (w != buffer.width || h != buffer.height)
+                buffer.allocate(w, h);
+
+            #pragma omp parallel for
+            for (int x = 0; x < w; ++x)
+                for (int y = 0; y < h; ++y) {
+                    GLuint index = x + y * w;
+                    assert(index < buffer.data.size());
+
+                    GLfloat a = x / GLfloat(w);
+                    GLfloat b = y / GLfloat(h);
+
+                    buffer.data[index] = {1.f, a, b};
+                }
+
+            buffer.update();
+        }
+
         void run() {
-            std::cout << "hi" << std::endl;
+            /* Create a windowed mode window and its OpenGL context */
+            CameraWindow camera_window("RT Spheres");
+
+            GLuint shader_program = create_shader_program("resources/rt_vert.glsl", "resources/rt_frag.glsl");
+
+            FrameBuffer buffer;
+
+            // Time between current frame and last frame
+            float dt = 0.0f;
+
+            auto [VAO, VBO, EBO] = create_rectangle(1.f);
+
+            /* Loop until the user closes the window */
+            while (!camera_window.window.should_close())
+            {
+                printFPS();
+                dt = calculate_dt();
+
+                camera_window.window.start_frame();
+
+                camera_window.update_camera_postition(dt);
+                camera_window.camera.update_look_at();
+
+                imgui_utils::render(camera_window);
+
+                /* update texture */
+                GLuint w = camera_window.window.width;
+                GLuint h = camera_window.window.height;
+
+                render(buffer, w, h);
+
+                /* Render here */
+                glClearColor(0.f, 0.f, 0.f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+                glUseProgram(shader_program);
+
+                glBindVertexArray(VAO);
+                glActiveTexture(GL_TEXTURE0);
+                buffer.bind();
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                buffer.unbind();
+                glBindVertexArray(0);
+
+                camera_window.window.end_frame();
+
+                if (GLenum e = glGetError())
+                    std::cout << "glGetError() = " << std::hex << e << std::endl;
+            }
+
+            glDeleteProgram(shader_program);
         }
     }
 }

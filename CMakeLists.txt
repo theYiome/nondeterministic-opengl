@@ -9,7 +9,7 @@ endif()
 
 project("LearnOpenGL")
 
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 17)
 if(MSVC)
     string(APPEND CMAKE_CXX_FLAGS " /Zc:__cplusplus")
 endif()
