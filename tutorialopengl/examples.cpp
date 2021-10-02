@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <tuple>
 
 #include <GLAD/glad.h>
@@ -208,6 +209,8 @@ namespace examples {
 
     namespace rt_spheres {
 
+        constexpr GLfloat f32inf = std::numeric_limits<GLfloat>::infinity();
+
         static std::tuple<GLuint, GLuint, GLuint> create_rectangle(const GLfloat& size = 0.2f) {
             GLuint VAO, VBO, EBO;
             glGenVertexArrays(1, &VAO);
@@ -248,11 +251,19 @@ namespace examples {
             return { VAO, VBO, EBO };
         }
 
-        struct Pixel {
+        template <typename T>
+        struct PixelTemplate {
             GLfloat r;
             GLfloat g;
             GLfloat b;
+
+            PixelTemplate operator*(const float& m) {
+                return { r * m, g * m, b * m };
+            }
         };
+        typedef PixelTemplate<GLfloat> Pixelf32;
+        typedef Pixelf32 Pixel;
+
 
         struct FrameBuffer {
             GLuint texture_id;
@@ -264,7 +275,7 @@ namespace examples {
             Pixel& at(const GLuint& x, const GLuint& y) {
                 assert(x < width);
                 assert(y < height);
-                return data[x * width + y];
+                return data[x + y * width];
             }
 
             GLfloat* raw_data() {
@@ -301,20 +312,225 @@ namespace examples {
             }
         };
 
-        void render(FrameBuffer& buffer, GLuint w, GLuint h) {
+        struct Ray {
+            glm::vec3 origin;
+            glm::vec3 direction; // must be a unit vector
+            
+            glm::vec3 at(GLfloat distance) {
+                return origin + (direction * distance);
+            }
+        };
+
+        struct Sphere {
+            glm::vec3 position = { 0.f, 0.f, 0.f };
+            float r = 1.f;
+
+            Pixel color = {1.f, 1.f, 1.f};
+
+            GLfloat intersects(const Ray& ray) const {
+                // https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection
+                const glm::vec3& C = position;
+                const glm::vec3& O = ray.origin;
+                const glm::vec3& D = ray.direction;
+
+                // is behind
+                glm::vec3 L = C - O;
+                float t_ca = glm::dot(L, D);
+
+                if (t_ca < 0) return f32inf;
+
+                // does miss
+                float d2 = glm::dot(L, L) - (t_ca * t_ca);
+                d2 = glm::abs(d2);
+                if (d2 > r * r) return f32inf;
+
+                float t_hc = sqrt(r * r - d2);
+                float t0 = t_ca - t_hc;
+                float t1 = t_ca + t_hc;
+
+                if (t0 > t1) std::swap(t0, t1);
+                if (t0 < 0) {
+                    // if t0 is negative, let's use t1 instead 
+                    t0 = t1; 
+                    // both t0 and t1 are negative 
+                    if (t0 < 0) return f32inf;
+                }
+
+                return t0;
+            }
+
+        };
+
+        struct Plane {
+            glm::vec3 position;
+            glm::vec3 normal;
+            Pixel color;
+
+            GLfloat intersects(const Ray& ray) const {
+                // https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-plane-and-ray-disk-intersection
+                float denom = glm::dot(normal, ray.direction);
+                if (glm::abs(denom) > 1e-6) {
+                    glm::vec3 p0l0 = position - ray.origin;
+                    float t = glm::dot(p0l0, normal) / denom;
+                    //return t;
+                    return t >= 0 ? t : f32inf;
+                }
+                return f32inf;
+            }
+        };
+
+        struct Light {
+            glm::vec3 position;
+            Pixel color;
+            float intensity;
+        };
+
+        struct Scene {
+            const FirstPersonCamera& cam;
+            std::vector<Sphere> spheres;
+            std::vector<Plane> planes;
+            std::vector<Light> lights;
+
+            Scene(const FirstPersonCamera& camera): cam(camera) {
+                spheres.push_back({ {0.f, 0.f, -1.f}, 1.f });
+                spheres.push_back({ {1.f, 1.f, 1.f}, 0.3f, {0.f, 0.f, 1.f} });
+                spheres.push_back({ {1.f, 5.f, 3.f}, 0.8f, {0.f, 1.f, 1.f} });
+                spheres.push_back({ {-3.f, 1.f, 1.f}, 1.3f, {1.f, 0.f, 1.f} });
+                spheres.push_back({ {2.f, -1.f, -1.f}, 0.1f, {0.f, 1.f, 0.f} });
+
+                planes.push_back({ {0.f, -1.f, 0.f}, {0.f, 1.f, 0.f}, {0.2f, 0.4f, 0.9f} });
+
+                lights.push_back({ { 0.f, 10.f, 0.f }, { 1.f, 1.f, 1.f }, 1.f });
+            }
+
+            void imgui_panel() {
+                ImGui::Begin("Scene");
+                
+                int i = 0;
+                if (ImGui::TreeNode("Spheres")) {
+                    for (Sphere& s : spheres) {
+                        ImGui::PushID(i++);
+                        ImGui::DragFloat3("Position", glm::value_ptr(s.position), 0.01f);
+                        ImGui::DragFloat("Radius", &s.r, 0.01f, 0.1f);
+                        ImGui::DragFloat3("Color", (float*)&s.color, 0.01f, 0.f, 1.f);
+                        ImGui::PopID();
+
+                        ImGui::Spacing();
+                    }
+                    ImGui::TreePop();
+                }
+
+                i = 0;
+                if (ImGui::TreeNode("Planes")) {
+                    for (Plane& p : planes) {
+                        ImGui::PushID(i++);
+                        ImGui::DragFloat3("Position", glm::value_ptr(p.position), 0.01f);
+                        ImGui::DragFloat3("Normal", glm::value_ptr(p.normal), 0.01f);
+                        ImGui::DragFloat3("Color", (float*)&p.color, 0.01f, 0.f, 1.f);
+                        ImGui::PopID();
+
+                        ImGui::Spacing();
+                    }
+                    ImGui::TreePop();
+                }
+
+
+                i = 0;
+                if (ImGui::TreeNode("Lights")) {
+                    for (Light& l : lights) {
+                        ImGui::PushID(i++);
+                        ImGui::DragFloat3("Position", glm::value_ptr(l.position), 0.01f);
+                        ImGui::DragFloat3("Color", (float*)&l.color, 0.01f, 0.f, 1.f);
+                        ImGui::DragFloat("Intensity", &l.intensity, 0.01f, 0.1f);
+                        ImGui::PopID();
+
+                        ImGui::Spacing();
+                    }
+                    ImGui::TreePop();
+                }
+
+                ImGui::End();
+            }
+        };
+
+        Ray calculate_vieport_ray(const FirstPersonCamera& cam, const int& w, const int& h, const int& x, const int& y) {
+            float d = 1.f / (cam.FOV + 0.1f);
+            glm::vec3 vx = -glm::normalize(glm::cross(cam.up, cam.look_at));
+            glm::vec3 vy = glm::normalize(glm::cross(vx, cam.look_at));
+
+            glm::vec3 base = cam.position + cam.look_at * d;
+
+            const float dv = 1.f / float(w);
+
+            const float dx = float(x) - (float(w) / 2.f);
+            const float dy = float(y) - (float(h) / 2.f);
+
+            glm::vec3 final_point = base + (vx * dv * dx) + (vy * dv * dy);
+
+            glm::vec3 direction = glm::normalize(final_point - cam.position);
+
+            return { cam.position, direction };
+        }
+
+
+        inline void kernel(std::vector<Pixel>& pixels, const int& x, const int& y, const GLuint& w, const GLuint& h, const Scene& scene) {
+            GLuint index = x + y * w;
+            assert(index < pixels.size());
+
+            //GLfloat a = x / GLfloat(w);
+            //GLfloat b = y / GLfloat(h);
+
+            //pixels[index] = { 0, 0, 0 };
+
+            Ray ray = calculate_vieport_ray(scene.cam, w, h, x, y);
+
+
+            GLfloat closest_distance = f32inf;
+            Pixel closest_color = {0, 0, 0};
+
+            for (const Sphere& s : scene.spheres) {
+                GLfloat current_distance = s.intersects(ray);
+                if (current_distance < closest_distance) {
+                    closest_color = s.color;
+                    closest_distance = current_distance;
+                }
+            }
+
+            for (const Plane& p : scene.planes) {
+                GLfloat current_distance = p.intersects(ray);
+                if (current_distance < closest_distance) {
+                    closest_color = p.color;
+                    closest_distance = current_distance;
+                }
+            }
+
+            if (closest_distance != f32inf) {
+
+                glm::vec3 pixel_pos = ray.origin + closest_distance * ray.direction;
+                int intersections = 0;
+                for (const Light& l : scene.lights) {
+                    Ray r = { pixel_pos, glm::normalize(l.position - pixel_pos) };
+                    for (const Sphere& s : scene.spheres) {
+                        if (s.intersects(r) != f32inf) ++intersections;
+                    }
+                }
+
+                pixels[index] = closest_color * (1.f / (1.f + intersections));
+            }
+            else {
+                pixels[index] = closest_color;
+            }
+
+        }
+
+        void render(FrameBuffer& buffer, GLuint w, GLuint h, const Scene& scene) {
             if (w != buffer.width || h != buffer.height)
                 buffer.allocate(w, h);
 
             #pragma omp parallel for
             for (int x = 0; x < w; ++x)
                 for (int y = 0; y < h; ++y) {
-                    GLuint index = x + y * w;
-                    assert(index < buffer.data.size());
-
-                    GLfloat a = x / GLfloat(w);
-                    GLfloat b = y / GLfloat(h);
-
-                    buffer.data[index] = {1.f, a, b};
+                    kernel(buffer.data, x, y, w, h, scene);
                 }
 
             buffer.update();
@@ -323,6 +539,7 @@ namespace examples {
         void run() {
             /* Create a windowed mode window and its OpenGL context */
             CameraWindow camera_window("RT Spheres");
+            Scene scene(camera_window.camera);
 
             GLuint shader_program = create_shader_program("resources/rt_vert.glsl", "resources/rt_frag.glsl");
 
@@ -345,12 +562,22 @@ namespace examples {
                 camera_window.camera.update_look_at();
 
                 imgui_utils::render(camera_window);
+                scene.imgui_panel();
 
-                /* update texture */
+                // RT settings and rendering
+                static float factor = 4;
+                {
+                    ImGui::Begin("RT Settings");
+                    ImGui::DragFloat("Decrease resolution", &factor, 0.01f, 0.5f, 100.f);
+                    factor = factor < 0.5f ? 0.5f : factor;
+                    ImGui::End();
+                }
+
                 GLuint w = camera_window.window.width;
                 GLuint h = camera_window.window.height;
 
-                render(buffer, w, h);
+                /* update texture */
+                render(buffer, w / factor, h / factor, scene);
 
                 /* Render here */
                 glClearColor(0.f, 0.f, 0.f, 1.0f);
