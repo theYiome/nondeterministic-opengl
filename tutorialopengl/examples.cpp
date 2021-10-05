@@ -260,6 +260,10 @@ namespace examples {
             PixelTemplate operator*(const float& m) {
                 return { r * m, g * m, b * m };
             }
+
+            PixelTemplate operator+(PixelTemplate& pixel2) {
+                return { r + pixel2.r, g + pixel2.g, b + pixel2.b };
+            }
         };
         typedef PixelTemplate<GLfloat> Pixelf32;
         typedef Pixelf32 Pixel;
@@ -316,8 +320,29 @@ namespace examples {
             glm::vec3 origin;
             glm::vec3 direction; // must be a unit vector
             
-            glm::vec3 at(GLfloat distance) {
+            glm::vec3 at(GLfloat distance) const {
                 return origin + (direction * distance);
+            }
+        };
+
+        struct Material {
+            Pixel color = { 1.f, 1.f, 1.f };
+
+            float relfectivity = 0.f;
+
+            float opacity = 1.0f;
+            float diffraction = 0.f;
+
+            void imgui_panel() {
+                if (ImGui::TreeNode("Material")) {
+                    ImGui::ColorEdit3("Color", (float*)&color, 0.01f);
+                    ImGui::DragFloat("Relfectivity", &relfectivity, 0.01f, 0.f, 1.f);
+                    ImGui::DragFloat("Opacity", &opacity, 0.01f, 0.f, 1.f);
+                    ImGui::DragFloat("Diffraction", &diffraction, 0.01f, 0.f, 1.f);
+                    ImGui::Spacing();
+
+                    ImGui::TreePop();
+                }
             }
         };
 
@@ -325,7 +350,7 @@ namespace examples {
             glm::vec3 position = { 0.f, 0.f, 0.f };
             float r = 1.f;
 
-            Pixel color = {1.f, 1.f, 1.f};
+            Material material;
 
             GLfloat intersects(const Ray& ray) const {
                 // https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection
@@ -364,7 +389,7 @@ namespace examples {
         struct Plane {
             glm::vec3 position;
             glm::vec3 normal;
-            Pixel color;
+            Material material;
 
             GLfloat intersects(const Ray& ray) const {
                 // https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-plane-and-ray-disk-intersection
@@ -398,7 +423,7 @@ namespace examples {
                 spheres.push_back({ {-3.f, 1.f, 1.f}, 1.3f, {1.f, 0.f, 1.f} });
                 spheres.push_back({ {2.f, -1.f, -1.f}, 0.1f, {0.f, 1.f, 0.f} });
 
-                planes.push_back({ {0.f, -1.f, 0.f}, {0.f, 1.f, 0.f}, {0.2f, 0.4f, 0.9f} });
+                planes.push_back({ {0.f, -1.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.25f, 0.f} });
 
                 lights.push_back({ { 0.f, 10.f, 0.f }, { 1.f, 1.f, 1.f }, 1.f });
             }
@@ -412,7 +437,7 @@ namespace examples {
                         ImGui::PushID(i++);
                         ImGui::DragFloat3("Position", glm::value_ptr(s.position), 0.01f);
                         ImGui::DragFloat("Radius", &s.r, 0.01f, 0.1f);
-                        ImGui::DragFloat3("Color", (float*)&s.color, 0.01f, 0.f, 1.f);
+                        s.material.imgui_panel();
                         ImGui::PopID();
 
                         ImGui::Spacing();
@@ -426,7 +451,7 @@ namespace examples {
                         ImGui::PushID(i++);
                         ImGui::DragFloat3("Position", glm::value_ptr(p.position), 0.01f);
                         ImGui::DragFloat3("Normal", glm::value_ptr(p.normal), 0.01f);
-                        ImGui::DragFloat3("Color", (float*)&p.color, 0.01f, 0.f, 1.f);
+                        p.material.imgui_panel();
                         ImGui::PopID();
 
                         ImGui::Spacing();
@@ -440,7 +465,7 @@ namespace examples {
                     for (Light& l : lights) {
                         ImGui::PushID(i++);
                         ImGui::DragFloat3("Position", glm::value_ptr(l.position), 0.01f);
-                        ImGui::DragFloat3("Color", (float*)&l.color, 0.01f, 0.f, 1.f);
+                        ImGui::ColorEdit3("Color", (float*)&l.color, 0.01f);
                         ImGui::DragFloat("Intensity", &l.intensity, 0.01f, 0.1f);
                         ImGui::PopID();
 
@@ -471,54 +496,67 @@ namespace examples {
 
             return { cam.position, direction };
         }
-
-
-        inline void kernel(std::vector<Pixel>& pixels, const int& x, const int& y, const GLuint& w, const GLuint& h, const Scene& scene) {
-            GLuint index = x + y * w;
-            assert(index < pixels.size());
-
-            //GLfloat a = x / GLfloat(w);
-            //GLfloat b = y / GLfloat(h);
-
-            //pixels[index] = { 0, 0, 0 };
-
-            Ray ray = calculate_vieport_ray(scene.cam, w, h, x, y);
-
-
+    
+        inline std::tuple<GLfloat, Material, glm::vec3> closest_collision(const Ray& ray, const Scene& scene) {
             GLfloat closest_distance = f32inf;
-            Pixel closest_color = {0, 0, 0};
+            Material closest_material = { {0.f, 0.f, 0.f} };
+            glm::vec3 normal;
 
             for (const Sphere& s : scene.spheres) {
                 GLfloat current_distance = s.intersects(ray);
                 if (current_distance < closest_distance) {
-                    closest_color = s.color;
+                    closest_material = s.material;
                     closest_distance = current_distance;
+                    normal = glm::normalize(ray.at(current_distance) - s.position);
                 }
             }
 
             for (const Plane& p : scene.planes) {
                 GLfloat current_distance = p.intersects(ray);
                 if (current_distance < closest_distance) {
-                    closest_color = p.color;
+                    closest_material = p.material;
                     closest_distance = current_distance;
+                    normal = p.normal;
                 }
             }
 
-            if (closest_distance != f32inf) {
+            closest_distance = closest_distance < 1e-9 ? f32inf : closest_distance;
 
-                glm::vec3 pixel_pos = ray.origin + closest_distance * ray.direction;
-                int intersections = 0;
-                for (const Light& l : scene.lights) {
-                    Ray r = { pixel_pos, glm::normalize(l.position - pixel_pos) };
-                    for (const Sphere& s : scene.spheres) {
-                        if (s.intersects(r) != f32inf) ++intersections;
+            return { closest_distance, closest_material, normal };
+        }
+
+        inline void kernel(std::vector<Pixel>& pixels, const int& x, const int& y, const GLuint& w, const GLuint& h, const Scene& scene) {
+            GLuint index = x + y * w;
+            assert(index < pixels.size());
+
+            Ray ray = calculate_vieport_ray(scene.cam, w, h, x, y);
+
+            auto [distance, material, normal] = closest_collision(ray, scene);
+
+            glm::vec3 pixel_position = ray.at(distance);
+            if (distance != f32inf) {
+
+                if (material.relfectivity == 0.f) {
+                    float intersections = 0.f;
+                    for (const Light& l : scene.lights) {
+                        Ray r = { pixel_position, glm::normalize(l.position - ray.at(distance)) };
+                        auto [d, m, n] = closest_collision(r, scene);
+                        if (d != f32inf) intersections += 1.f;
                     }
+                    pixels[index] = material.color * (1.f / (1.f + intersections));
+                }
+                else {
+                    Ray r = { pixel_position, ray.direction - normal * 2.f * glm::dot(ray.direction, normal) };
+                    auto [d, m, n] = closest_collision(r, scene);
+
+                    float complement = 1.f - material.relfectivity;
+
+                    pixels[index] = (material.color * complement) + (m.color * material.relfectivity);
                 }
 
-                pixels[index] = closest_color * (1.f / (1.f + intersections));
             }
             else {
-                pixels[index] = closest_color;
+                pixels[index] = material.color;
             }
 
         }
