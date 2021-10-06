@@ -261,8 +261,12 @@ namespace examples {
                 return { r * m, g * m, b * m };
             }
 
-            PixelTemplate operator+(PixelTemplate& pixel2) {
+            PixelTemplate operator+(const PixelTemplate& pixel2) {
                 return { r + pixel2.r, g + pixel2.g, b + pixel2.b };
+            }
+
+            PixelTemplate operator*(const PixelTemplate& pixel2) {
+                return { r * pixel2.r, g * pixel2.g, b * pixel2.b };
             }
         };
         typedef PixelTemplate<GLfloat> Pixelf32;
@@ -275,12 +279,6 @@ namespace examples {
             GLuint width;
             GLuint height;
             std::vector<Pixel> data;
-
-            Pixel& at(const GLuint& x, const GLuint& y) {
-                assert(x < width);
-                assert(y < height);
-                return data[x + y * width];
-            }
 
             GLfloat* raw_data() {
                 return reinterpret_cast<GLfloat*>(data.data());
@@ -328,7 +326,8 @@ namespace examples {
         struct Material {
             Pixel color = { 1.f, 1.f, 1.f };
 
-            float relfectivity = 0.f;
+            float emissivity = 0.f;
+            float relfectivity = 0.1f;
 
             float opacity = 1.0f;
             float diffraction = 0.f;
@@ -408,6 +407,39 @@ namespace examples {
             glm::vec3 position;
             Pixel color;
             float intensity;
+
+            GLfloat intersects(const Ray& ray) const {
+                // https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection
+                float r = 0.618f;
+                const glm::vec3& C = position;
+                const glm::vec3& O = ray.origin;
+                const glm::vec3& D = ray.direction;
+
+                // is behind
+                glm::vec3 L = C - O;
+                float t_ca = glm::dot(L, D);
+
+                if (t_ca < 0) return f32inf;
+
+                // does miss
+                float d2 = glm::dot(L, L) - (t_ca * t_ca);
+                d2 = glm::abs(d2);
+                if (d2 > r * r) return f32inf;
+
+                float t_hc = sqrt(r * r - d2);
+                float t0 = t_ca - t_hc;
+                float t1 = t_ca + t_hc;
+
+                if (t0 > t1) std::swap(t0, t1);
+                if (t0 < 0) {
+                    // if t0 is negative, let's use t1 instead 
+                    t0 = t1;
+                    // both t0 and t1 are negative 
+                    if (t0 < 0) return f32inf;
+                }
+
+                return t0;
+            }
         };
 
         struct Scene {
@@ -415,6 +447,7 @@ namespace examples {
             std::vector<Sphere> spheres;
             std::vector<Plane> planes;
             std::vector<Light> lights;
+            Pixel ambient = { 0.2f, 0.2f, 0.2f };
 
             Scene(const FirstPersonCamera& camera): cam(camera) {
                 spheres.push_back({ {0.f, 0.f, -1.f}, 1.f });
@@ -462,17 +495,24 @@ namespace examples {
 
                 i = 0;
                 if (ImGui::TreeNode("Lights")) {
+                    Pixel new_ambient = { 0.f, 0.f, 0.f };
                     for (Light& l : lights) {
                         ImGui::PushID(i++);
                         ImGui::DragFloat3("Position", glm::value_ptr(l.position), 0.01f);
-                        ImGui::ColorEdit3("Color", (float*)&l.color, 0.01f);
+                        ImGui::ColorEdit3("Color", (float*)&l.color);
                         ImGui::DragFloat("Intensity", &l.intensity, 0.01f, 0.1f);
                         ImGui::PopID();
-
                         ImGui::Spacing();
+
+                        new_ambient = new_ambient + l.color;
                     }
                     ImGui::TreePop();
+
+                    if (lights.size() > 0)
+                        ambient = new_ambient * (1.f / lights.size()) * 0.2f;
                 }
+
+                ImGui::ColorEdit3("Ambient light", (float*)&ambient);
 
                 ImGui::End();
             }
@@ -511,18 +551,26 @@ namespace examples {
                 }
             }
 
+            for (const Light& l : scene.lights) {
+                GLfloat current_distance = l.intersects(ray);
+                if (current_distance < closest_distance) {
+                    closest_material = {l.color, 1.0f};
+                    closest_distance = current_distance;
+                }
+            }
+
             for (const Plane& p : scene.planes) {
                 GLfloat current_distance = p.intersects(ray);
                 if (current_distance < closest_distance) {
                     closest_material = p.material;
                     closest_distance = current_distance;
-                    normal = p.normal;
+                    normal = glm::normalize(p.normal);
                 }
             }
 
-            closest_distance = closest_distance < 1e-9 ? f32inf : closest_distance;
-
-            return { closest_distance, closest_material, normal };
+            constexpr float SELF_COLLISION_HACK_FRONT = 0.99999f;
+            constexpr float SELF_COLLISION_HACK_BACK = 2.f - SELF_COLLISION_HACK_FRONT;
+            return { closest_distance * SELF_COLLISION_HACK_FRONT, closest_material, normal };
         }
 
         inline void kernel(std::vector<Pixel>& pixels, const int& x, const int& y, const GLuint& w, const GLuint& h, const Scene& scene) {
@@ -533,30 +581,46 @@ namespace examples {
 
             auto [distance, material, normal] = closest_collision(ray, scene);
 
-            glm::vec3 pixel_position = ray.at(distance);
+            if (material.emissivity > 0.f) {
+                pixels[index] = material.color * material.emissivity;
+                return;
+            }
+            
             if (distance != f32inf) {
-
-                if (material.relfectivity == 0.f) {
-                    float intersections = 0.f;
-                    for (const Light& l : scene.lights) {
-                        Ray r = { pixel_position, glm::normalize(l.position - ray.at(distance)) };
-                        auto [d, m, n] = closest_collision(r, scene);
-                        if (d != f32inf) intersections += 1.f;
-                    }
-                    pixels[index] = material.color * (1.f / (1.f + intersections));
-                }
-                else {
-                    Ray r = { pixel_position, ray.direction - normal * 2.f * glm::dot(ray.direction, normal) };
+                glm::vec3 pixel_position = ray.at(distance);
+                bool in_shadow = false;
+                for (const Light& l : scene.lights) {
+                    Ray r = { pixel_position, glm::normalize(l.position - ray.at(distance)) };
                     auto [d, m, n] = closest_collision(r, scene);
 
-                    float complement = 1.f - material.relfectivity;
-
-                    pixels[index] = (material.color * complement) + (m.color * material.relfectivity);
+                    if (d != f32inf && m.emissivity == 0.f) {
+                        pixels[index] = material.color * scene.ambient;
+                    }
+                    else {
+                        float factor = glm::dot(r.direction, normal);
+                        factor = factor < 0.2f ? 0.2f : factor;
+                        //factor = 1.f;
+                        pixels[index] = material.color * scene.lights[0].color * factor;
+                    }
                 }
+
+
+                //if (material.relfectivity == 0.f) {
+                //    float intersections = 0.f;
+                //    pixels[index] = material.color * (1.f / (1.f + intersections));
+                //}
+                //else {
+                //    Ray r = { pixel_position, ray.direction - normal * 2.f * glm::dot(ray.direction, normal) };
+                //    auto [d, m, n] = closest_collision(r, scene);
+
+                //    float complement = 1.f - material.relfectivity;
+
+                //    pixels[index] = (material.color * complement) + (m.color * material.relfectivity);
+                //}
 
             }
             else {
-                pixels[index] = material.color;
+                pixels[index] = { 0.f, 0.f, 0.f };
             }
 
         }
@@ -603,11 +667,11 @@ namespace examples {
                 scene.imgui_panel();
 
                 // RT settings and rendering
-                static float factor = 4;
+                static float factor = 3.f;
                 {
                     ImGui::Begin("RT Settings");
-                    ImGui::DragFloat("Decrease resolution", &factor, 0.01f, 0.5f, 100.f);
-                    factor = factor < 0.5f ? 0.5f : factor;
+                    ImGui::DragFloat("Decrease resolution", &factor, 0.01f, 0.8f, 100.f);
+                    factor = factor < 0.8f ? 0.8f : factor;
                     ImGui::End();
                 }
 
