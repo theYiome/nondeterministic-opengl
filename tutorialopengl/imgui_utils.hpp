@@ -1,5 +1,6 @@
 #pragma once
 #include <imgui.h>
+#include "examples.hpp"
 
 namespace imgui_utils {
     void render(CameraWindow& window) {
@@ -22,11 +23,5 @@ namespace imgui_utils {
             }
             ImGui::End();
         }
-    }
-
-    void render(examples::basic_light::Data& data) {
-        ImGui::Begin("Application data");
-        data.imgui_panel();
-        ImGui::End();
     }
 }

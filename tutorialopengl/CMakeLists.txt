@@ -21,10 +21,10 @@ target_sources(tutorialopengl
         "stb.cpp"
         "Texture.hpp"
         "utils.hpp"
+        
         "examples.hpp"
-        "examples.cpp"
         "imgui_utils.hpp"
- "sample_raytracer.cpp")
+ "sample_raytracer.cpp" "rt_primitives.hpp")
 
 find_path(STB_INCLUDE_DIRS "stb.h")
 target_include_directories(tutorialopengl PRIVATE ${STB_INCLUDE_DIRS})
