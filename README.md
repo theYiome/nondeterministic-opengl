@@ -11,4 +11,4 @@ To compile you need `cmake`.
 - `glfw`
 - `imgui`
 
-To get libraries above listed `vcpkg` is recommended.
+To get libraries `vcpkg` is recommended.
