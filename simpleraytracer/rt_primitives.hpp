@@ -42,18 +42,18 @@ struct Ray {
 struct Material {
     Pixel color = { 1.f, 1.f, 1.f };
 
-    float emissivity = 0.f;
+    float emissivity = 0.0f;
     float relfectivity = 0.0f;
 
-    float opacity = 1.0f;
+    float transparency = 0.0f;
     float diffraction = 0.f;
 
     void imgui_panel() {
         if (ImGui::TreeNode("Material")) {
             ImGui::ColorEdit3("Color", (float*)&color, 0.01f);
             ImGui::DragFloat("Relfectivity", &relfectivity, 0.01f, 0.f, 1.f);
-            ImGui::DragFloat("Opacity", &opacity, 0.01f, 0.f, 1.f);
-            ImGui::DragFloat("Diffraction", &diffraction, 0.01f, 0.f, 1.f);
+            ImGui::DragFloat("Transparency", &transparency, 0.01f, 0.f, 1.f);
+            ImGui::DragFloat("Diffraction", &diffraction, 0.01f, -2.f, 2.f);
             ImGui::Spacing();
 
             ImGui::TreePop();
@@ -99,6 +99,37 @@ struct Sphere {
         return t0;
     }
 
+    std::tuple<GLfloat, GLfloat> intersects2(const Ray& ray) const {
+        // https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection
+        const glm::vec3& C = position;
+        const glm::vec3& O = ray.origin;
+        const glm::vec3& D = ray.direction;
+
+        // is behind
+        glm::vec3 L = C - O;
+        float t_ca = glm::dot(L, D);
+
+        if (t_ca < 0) return { f32inf , f32inf };
+
+        // does miss
+        float d2 = glm::dot(L, L) - (t_ca * t_ca);
+        d2 = glm::abs(d2);
+        if (d2 > r * r) return { f32inf, f32inf };
+
+        float t_hc = sqrt(r * r - d2);
+        float t0 = t_ca - t_hc;
+        float t1 = t_ca + t_hc;
+
+        if (t0 > t1) std::swap(t0, t1);
+        if (t0 < 0) {
+            // if t0 is negative, let's use t1 instead 
+            t0 = t1;
+            // both t0 and t1 are negative 
+            if (t0 < 0) return { f32inf, f32inf };
+        }
+
+        return { t0, t1 };
+    }
 };
 
 struct Plane {
@@ -155,5 +186,38 @@ struct Light {
         }
 
         return t0;
+    }
+
+    std::tuple<GLfloat, GLfloat> intersects2(const Ray& ray) const {
+        // https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection
+        float r = 0.618f;
+        const glm::vec3& C = position;
+        const glm::vec3& O = ray.origin;
+        const glm::vec3& D = ray.direction;
+
+        // is behind
+        glm::vec3 L = C - O;
+        float t_ca = glm::dot(L, D);
+
+        if (t_ca < 0) return { f32inf , f32inf };
+
+        // does miss
+        float d2 = glm::dot(L, L) - (t_ca * t_ca);
+        d2 = glm::abs(d2);
+        if (d2 > r * r) return { f32inf, f32inf };
+
+        float t_hc = sqrt(r * r - d2);
+        float t0 = t_ca - t_hc;
+        float t1 = t_ca + t_hc;
+
+        if (t0 > t1) std::swap(t0, t1);
+        if (t0 < 0) {
+            // if t0 is negative, let's use t1 instead 
+            t0 = t1;
+            // both t0 and t1 are negative 
+            if (t0 < 0) return { f32inf, f32inf };
+        }
+
+        return { t0, t1 };
     }
 };

@@ -11,9 +11,9 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 
 # Add source to this project's executable.
-add_executable(tutorialopengl "")
+add_executable(simpleraytracer "")
 
-target_sources(tutorialopengl
+target_sources(simpleraytracer
     PRIVATE
         "main.cpp"
         "Models.hpp"
@@ -24,22 +24,22 @@ target_sources(tutorialopengl
         
         "examples.hpp"
         "imgui_utils.hpp"
- "sample_raytracer.cpp" "rt_primitives.hpp")
+  "rt_primitives.hpp")
 
 find_path(STB_INCLUDE_DIRS "stb.h")
-target_include_directories(tutorialopengl PRIVATE ${STB_INCLUDE_DIRS})
+target_include_directories(simpleraytracer PRIVATE ${STB_INCLUDE_DIRS})
 
-target_link_libraries(tutorialopengl PUBLIC OpenMP::OpenMP_CXX)
-target_link_libraries(tutorialopengl PRIVATE glad::glad)
-target_link_libraries(tutorialopengl PRIVATE glm::glm)
-target_link_libraries(tutorialopengl PRIVATE glfw)
-target_link_libraries(tutorialopengl PRIVATE imgui::imgui)
+target_link_libraries(simpleraytracer PUBLIC OpenMP::OpenMP_CXX)
+target_link_libraries(simpleraytracer PRIVATE glad::glad)
+target_link_libraries(simpleraytracer PRIVATE glm::glm)
+target_link_libraries(simpleraytracer PRIVATE glfw)
+target_link_libraries(simpleraytracer PRIVATE imgui::imgui)
 
 # own libs
 
 #target_include_directories(tutorialopengl windowinglib)
-target_link_libraries(tutorialopengl PRIVATE windowing)
-install(TARGETS tutorialopengl DESTINATION bin)
+target_link_libraries(simpleraytracer PRIVATE windowing)
+install(TARGETS simpleraytracer DESTINATION bin)
 
 if (MSVC)
     # warning level 4 and all warnings as errors
@@ -51,7 +51,7 @@ endif()
 
 if(UNIX)
     add_custom_command(
-        TARGET tutorialopengl POST_BUILD
+        TARGET simpleraytracer POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E create_symlink              
         ${CMAKE_CURRENT_SOURCE_DIR}/resources
         ${CMAKE_CURRENT_BINARY_DIR}/resources
@@ -67,6 +67,6 @@ else()
 	    ${CMAKE_CURRENT_BINARY_DIR}/resources
     )
 
-    add_dependencies(tutorialopengl copy_resources)
+    add_dependencies(simpleraytracer copy_resources)
 
 endif(UNIX)

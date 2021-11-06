@@ -122,8 +122,6 @@ namespace examples {
             }
         };
 
-
-
 	    void run() {
             examples::basic_light::Data app;
             Data app_data;
@@ -296,7 +294,6 @@ namespace examples {
             return { VAO, VBO, EBO };
         }
 
-
         struct FrameBuffer {
             GLuint texture_id;
 
@@ -445,25 +442,28 @@ namespace examples {
             return { cam.position, direction };
         }
     
-        inline std::tuple<GLfloat, Material, glm::vec3> closest_collision(const Ray& ray, const Scene& scene) {
+        inline std::tuple<GLfloat, GLfloat, Material, glm::vec3> closest_collision(const Ray& ray, const Scene& scene) {
             GLfloat closest_distance = f32inf;
+            GLfloat closest_distance2 = f32inf;
             Material closest_material = { {0.f, 0.f, 0.f} };
             glm::vec3 normal;
 
             for (const Sphere& s : scene.spheres) {
-                GLfloat current_distance = s.intersects(ray);
+                auto [current_distance, current_distance2] = s.intersects2(ray);
                 if (current_distance < closest_distance) {
                     closest_material = s.material;
                     closest_distance = current_distance;
+                    closest_distance2 = current_distance2;
                     normal = glm::normalize(ray.at(current_distance) - s.position);
                 }
             }
 
             for (const Light& l : scene.lights) {
-                GLfloat current_distance = l.intersects(ray);
+                auto [current_distance, current_distance2] = l.intersects2(ray);
                 if (current_distance < closest_distance) {
                     closest_material = { l.color, 1.0f, 0.f };
                     closest_distance = current_distance;
+                    closest_distance2 = current_distance2;
                 }
             }
 
@@ -472,20 +472,22 @@ namespace examples {
                 if (current_distance < closest_distance) {
                     closest_material = p.material;
                     closest_distance = current_distance;
+                    closest_distance2 = current_distance;
                     normal = glm::normalize(p.normal);
                 }
             }
 
             constexpr float SELF_COLLISION_HACK_FRONT = 0.99999f;
             constexpr float SELF_COLLISION_HACK_BACK = 2.f - SELF_COLLISION_HACK_FRONT;
-            return { closest_distance * SELF_COLLISION_HACK_FRONT, closest_material, normal };
+            return { closest_distance * SELF_COLLISION_HACK_FRONT, closest_distance2 * SELF_COLLISION_HACK_BACK, closest_material, normal };
         }
 
         float calculate_light_attenuation(const glm::vec3 primitive_normal, const glm::vec3 ray_direction, const float& distance) {
             float factor = glm::dot(ray_direction, primitive_normal);
             //factor *= 100.f / (distance * distance);
-            factor = factor < 0.2f ? 0.2f : factor;
-            factor -= 0.2f;
+            constexpr float offset = 0.0f;
+            factor = factor < offset ? offset : factor;
+            factor -= offset;
             return factor;
         }
 
@@ -493,7 +495,7 @@ namespace examples {
             Pixel sum = material.color * scene.ambient;
             for (const Light& l : scene.lights) {
                 Ray r = { pixel_position, glm::normalize(l.position - pixel_position) };
-                auto [d, m, n] = closest_collision(r, scene);
+                auto [d, d2, m, n] = closest_collision(r, scene);
 
                 if (m.emissivity > 0.f) {
                     float attenuation = calculate_light_attenuation(normal, r.direction, d);
@@ -504,25 +506,35 @@ namespace examples {
             return sum;
         }
 
-        Pixel recursive_reflection(int traces, const Material& material, const Ray& ray, const glm::vec3& normal, const float& distance, const Scene& scene) {
+        Pixel recursive_tracing(int traces, const Material& material, const Ray& ray, const glm::vec3& normal, const float& distance, const float& distance2, const Scene& scene) {
             glm::vec3 pixel_position = ray.at(distance);
             Pixel sum = light_sum(pixel_position, normal, material, scene);
-            if (material.relfectivity >= 0.f) {
+
+            if (traces <= 0) return sum;
+            if (material.relfectivity == 0.f && material.transparency == 0.f) return sum;
+
+            Pixel reflective_part = { 0.f, 0.f, 0.f };
+            if (material.relfectivity > 0.f) {
                 Ray r = { pixel_position, ray.direction - normal * 2.f * glm::dot(ray.direction, normal) };
-                auto [d, m, n] = closest_collision(r, scene);
-
-                float complement = 1.f - material.relfectivity;
-
-                if (m.relfectivity >= 0.f && traces > 0) {
-                    return (sum * complement) + recursive_reflection(traces - 1, m, r, n, d, scene) * material.relfectivity;
-                }
-                else {
-                    return (sum * complement) + (light_sum(r.at(distance), n, m, scene) * material.relfectivity);
-                }
+                auto [d, d2, m, n] = closest_collision(r, scene);
+                reflective_part = recursive_tracing(traces - 1, m, r, n, d, d2, scene);
             }
-            else {
-                return sum;
+
+            Pixel transparent_part = { 0.f, 0.f, 0.f };
+            if (material.transparency != 0.f) {
+                Ray r = { ray.at(distance2), ray.direction };
+
+                if (material.diffraction > 0.f)
+                    r.direction = ray.direction + (normal * material.diffraction);
+
+                auto [d, d2, m, n] = closest_collision(r, scene);
+                transparent_part = recursive_tracing(traces - 1, m, r, n, d, d2, scene);
             }
+
+            float complement = 1.f - material.relfectivity - material.transparency;
+            complement = complement < 0.f ? 0.f : complement;
+
+            return (sum * complement) + (reflective_part * material.relfectivity) + (transparent_part * material.transparency);
         }
 
         struct RayTracingSettings {
@@ -535,7 +547,7 @@ namespace examples {
 
             Ray ray = calculate_vieport_ray(scene.cam, w, h, x, y);
 
-            auto [distance, material, normal] = closest_collision(ray, scene);
+            auto [distance, distance2, material, normal] = closest_collision(ray, scene);
 
             if (material.emissivity > 0.f) {
                 pixels[index] = material.color * material.emissivity;
@@ -547,25 +559,7 @@ namespace examples {
                 return;
             }
 
-            pixels[index] = recursive_reflection(settings.max_bounces, material, ray, normal, distance, scene);
-
-            //glm::vec3 pixel_position = ray.at(distance);
-
-            //Pixel sum = light_sum(pixel_position, normal, material, scene);
-
-
-            //if (material.relfectivity >= 0.f) {
-            //    Ray r = { pixel_position, ray.direction - normal * 2.f * glm::dot(ray.direction, normal) };
-            //    auto [d, m, n] = closest_collision(r, scene);
-
-            //    float complement = 1.f - material.relfectivity;
-
-            //    pixels[index] = (sum * complement) + (light_sum(r.at(distance), n, m, scene) * material.relfectivity);
-            //}
-            //else {
-            //    pixels[index] = sum;
-            //}
-
+            pixels[index] = recursive_tracing(settings.max_bounces, material, ray, normal, distance, distance2, scene);
         }
 
         void render(FrameBuffer& buffer, GLuint w, GLuint h, const Scene& scene, const RayTracingSettings& settings) {

@@ -16,4 +16,4 @@ endif()
 
 # Include sub-projects.
 add_subdirectory("windowing")
-add_subdirectory("tutorialopengl")
+add_subdirectory("simpleraytracer")
